@@ -45,4 +45,28 @@ TEXT_CONTENT_TYPES = [
     "Blog Post",
     "Email Campaign",
     "Other"
-] 
+]
+
+# Watermark Positions
+WATERMARK_POSITIONS = {
+    "bottom_right": {
+        "name": "پایین سمت راست",
+        "value": "bottom-right"
+    },
+    "bottom_left": {
+        "name": "پایین سمت چپ", 
+        "value": "bottom-left"
+    },
+    "top_right": {
+        "name": "بالا سمت راست",
+        "value": "top-right"
+    },
+    "top_left": {
+        "name": "بالا سمت چپ",
+        "value": "top-left"
+    },
+    "center": {
+        "name": "وسط تصویر",
+        "value": "center"
+    }
+} 

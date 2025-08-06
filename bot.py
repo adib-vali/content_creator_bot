@@ -14,8 +14,9 @@ from telegram.ext import (
 )
 from telegram.constants import ParseMode
 
-from config import TELEGRAM_TOKEN, PRODUCT_SHOT_TYPES, TEXT_CONTENT_TYPES
+from config import TELEGRAM_TOKEN, PRODUCT_SHOT_TYPES, TEXT_CONTENT_TYPES, WATERMARK_POSITIONS
 from api_client import FalAPIClient
+from watermark import WatermarkProcessor
 
 # Enable logging
 logging.basicConfig(
@@ -25,11 +26,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Conversation states
-CHOOSING_OPTION, CHOOSING_SHOT_TYPE, CHOOSING_TEXT_TYPE, WAITING_FOR_TEXT_PROMPT = range(4)
+CHOOSING_OPTION, CHOOSING_SHOT_TYPE, CHOOSING_TEXT_TYPE, WAITING_FOR_TEXT_PROMPT, CHOOSING_WATERMARK_POSITION = range(5)
 
 class ContentCreatorBot:
     def __init__(self):
         self.api_client = FalAPIClient()
+        self.watermark_processor = WatermarkProcessor()
         self.user_data = {}  # Store user data temporarily
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -60,6 +62,7 @@ class ContentCreatorBot:
         keyboard = [
             [InlineKeyboardButton("تولید تصویر محصول", callback_data="product_image")],
             [InlineKeyboardButton("تولید محتوا متنی", callback_data="text_content")],
+            [InlineKeyboardButton("🔒 افزودن واترمارک", callback_data="watermark")],
             [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -123,6 +126,7 @@ class ContentCreatorBot:
             keyboard = [
                 [InlineKeyboardButton("تولید تصویر محصول", callback_data="product_image")],
                 [InlineKeyboardButton("تولید محتوا متنی", callback_data="text_content")],
+                [InlineKeyboardButton("🔒 افزودن واترمارک", callback_data="watermark")],
                 [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -131,6 +135,22 @@ class ContentCreatorBot:
                 reply_markup=reply_markup
             )
             return CHOOSING_OPTION
+        
+        elif query.data == "watermark":
+            # Show watermark position options
+            keyboard = []
+            for pos_id, pos_info in WATERMARK_POSITIONS.items():
+                keyboard.append([InlineKeyboardButton(pos_info["name"], callback_data=f"watermark_{pos_id}")])
+            
+            # Add back button
+            keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                "لطفاً موقعیت واترمارک را انتخاب کنید:",
+                reply_markup=reply_markup
+            )
+            return CHOOSING_WATERMARK_POSITION
         
         elif query.data == "back_to_start":
             # Clean up user data and go back to start
@@ -243,6 +263,7 @@ class ContentCreatorBot:
             keyboard = [
                 [InlineKeyboardButton("تولید تصویر محصول", callback_data="product_image")],
                 [InlineKeyboardButton("تولید محتوا متنی", callback_data="text_content")],
+                [InlineKeyboardButton("🔒 افزودن واترمارک", callback_data="watermark")],
                 [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -350,6 +371,7 @@ class ContentCreatorBot:
         keyboard = [
             [InlineKeyboardButton("تولید تصویر محصول", callback_data="product_image")],
             [InlineKeyboardButton("تولید محتوا متنی", callback_data="text_content")],
+            [InlineKeyboardButton("🔒 افزودن واترمارک", callback_data="watermark")],
             [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -372,6 +394,93 @@ class ContentCreatorBot:
         await update.message.reply_text("❌ عملیات لغو شد.")
         return ConversationHandler.END
     
+    async def handle_watermark_position_choice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle watermark position selection and add watermark to image."""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        
+        # Handle back button
+        if query.data == "back_to_main":
+            # Go back to main menu
+            keyboard = [
+                [InlineKeyboardButton("تولید تصویر محصول", callback_data="product_image")],
+                [InlineKeyboardButton("تولید محتوا متنی", callback_data="text_content")],
+                [InlineKeyboardButton("🔒 افزودن واترمارک", callback_data="watermark")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                "لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
+                reply_markup=reply_markup
+            )
+            return CHOOSING_OPTION
+        
+        pos_id = query.data.replace("watermark_", "")
+        
+        if pos_id in WATERMARK_POSITIONS:
+            pos_info = WATERMARK_POSITIONS[pos_id]
+            image_url = self.user_data.get(user_id, {}).get("image_url")
+            
+            if not image_url:
+                await query.edit_message_text("❌ خطا: تصویر محصول یافت نشد. لطفاً دوباره تصویر را ارسال کنید.")
+                return ConversationHandler.END
+            
+            # Show processing message
+            await query.edit_message_text("🔄 در حال افزودن واترمارک... لطفاً صبر کنید.")
+            
+            try:
+                # Add watermark
+                watermarked_image_data = self.watermark_processor.add_watermark(
+                    image_url=image_url,
+                    position=pos_info["value"],
+                    opacity=0.7
+                )
+                
+                if watermarked_image_data:
+                    # Send the watermarked image
+                    await context.bot.send_photo(
+                        chat_id=user_id,
+                        photo=watermarked_image_data,
+                        caption=f"✅ واترمارک با موفقیت در {pos_info['name']} اضافه شد!"
+                    )
+                    success = True
+                else:
+                    await context.bot.send_message(
+                        chat_id=user_id,
+                        text="❌ خطا در افزودن واترمارک. لطفاً دوباره تلاش کنید."
+                    )
+                    success = False
+                    
+            except Exception as e:
+                logger.error(f"Error adding watermark: {e}")
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="❌ خطا در افزودن واترمارک. لطفاً دوباره تلاش کنید."
+                )
+                success = False
+            
+            # Add a small delay to ensure image is sent first
+            import asyncio
+            await asyncio.sleep(1)
+            
+            # Show main menu again for more actions
+            keyboard = [
+                [InlineKeyboardButton("تولید تصویر محصول", callback_data="product_image")],
+                [InlineKeyboardButton("تولید محتوا متنی", callback_data="text_content")],
+                [InlineKeyboardButton("🔒 افزودن واترمارک", callback_data="watermark")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_start")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="لطفاً یکی از گزینه‌های زیر را انتخاب کنید:",
+                reply_markup=reply_markup
+            )
+            
+            return CHOOSING_OPTION
+    
     def run(self):
         """Start the bot."""
         # Create the Application
@@ -387,7 +496,8 @@ class ContentCreatorBot:
                 CHOOSING_OPTION: [CallbackQueryHandler(self.handle_option_choice)],
                 CHOOSING_SHOT_TYPE: [CallbackQueryHandler(self.handle_shot_type_choice)],
                 CHOOSING_TEXT_TYPE: [CallbackQueryHandler(self.handle_text_type_choice)],
-                WAITING_FOR_TEXT_PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text_prompt)]
+                WAITING_FOR_TEXT_PROMPT: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text_prompt)],
+                CHOOSING_WATERMARK_POSITION: [CallbackQueryHandler(self.handle_watermark_position_choice)]
             },
             fallbacks=[CommandHandler("cancel", self.cancel)]
         )
