@@ -114,7 +114,7 @@ class WatermarkProcessor:
         
         return (watermark_width, watermark_height)
     
-    def add_watermark(self, image_url, position="bottom-right", opacity=0.9):
+    def add_watermark(self, image_url, position="bottom-right", opacity=1.0):
         """
         Add watermark to image from URL
         
@@ -169,7 +169,7 @@ class WatermarkProcessor:
                 y = 20
             elif position == "center":
                 x = (base_width - watermark_width) // 2
-                y = (base_height - watermark_height) // 2
+                y = base_height - watermark_height - 20
             else:
                 # Default to bottom-right
                 x = base_width - watermark_width - 20

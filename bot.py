@@ -435,7 +435,7 @@ class ContentCreatorBot:
                 watermarked_image_data = self.watermark_processor.add_watermark(
                     image_url=image_url,
                     position=pos_info["value"],
-                    opacity=0.7
+                    opacity=1.0
                 )
                 
                 if watermarked_image_data:
