@@ -169,7 +169,7 @@ class WatermarkProcessor:
                 y = 20
             elif position == "center":
                 x = (base_width - watermark_width) // 2
-                y = base_height - watermark_height - 20
+                y = base_height - watermark_height - 30
             else:
                 # Default to bottom-right
                 x = base_width - watermark_width - 20
